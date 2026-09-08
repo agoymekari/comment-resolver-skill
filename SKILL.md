@@ -16,7 +16,8 @@ description: >-
   the answer, if it's a question) and resolves; for an assessment you mark invalid it does what
   you direct next. Every outward-facing write is gated behind your confirmation. Targets
   Bitbucket Cloud. Composes pull-request (Bitbucket API + auth), code-review (assessment lens),
-  coding-standards-* (fixes), and commit-workflow (landing them).
+  and coding-standards-* (fixes); it commits + pushes fixes itself with a plain
+  conventional-commit recipe (no dependency on any personal commit skill).
 ---
 
 # PR Comment Resolver
@@ -44,8 +45,10 @@ It does **not** reinvent PR/commit machinery — it composes existing skills:
   `references/bitbucket-comments-api.md` only adds the *comment* endpoints.
 - **`code-review`** → the lens for assessing whether a comment is applicable to the code.
 - **`coding-standards-frontend` / `coding-standards-backend`** → how a fix is written.
-- **`commit-workflow`** → landing a fix (conventional message, co-author trailer, push,
-  first-push Jira self-test). This skill never hand-rolls git writes.
+
+Landing a fix (commit + push) is done **inline** with a plain conventional-commit recipe
+(Step 4a) — this skill does **not** depend on any personal commit skill, so it stays portable
+into a shared skill set.
 
 ## Pattern: assess → you adjudicate → act, with a write gate
 
@@ -65,9 +68,15 @@ are valid. Nothing is written until you say so.
    scopes: `repository:read` (fetch), **`pullrequest:write`** (reply + resolve). If the vars
    are unset after sourcing, STOP and tell the developer what to fill in — never invent or
    print a secret.
-3. **Local checkout must match the PR** to make fixes: on the PR's **source branch**, clean
-   working tree, up to date with `origin`. If you're only replying/resolving (no code fix),
-   a checkout isn't required — but say so.
+3. **Reading the PR code vs. fixing it — two different needs:**
+   - **To assess (Steps 2–3), don't switch branches.** Read the exact PR version without
+     touching the developer's working tree: `git fetch` the source branch if needed, then
+     `git show origin/<source-branch>:<path>` for each referenced file. This keeps the
+     assessment read-only — no checkout, no mutation — which is what a dry run / assess-only
+     run wants.
+   - **To apply a fix (Step 4a), the checkout must be on the PR's source branch**, clean
+     working tree, up to date with `origin`. Only switch branches once the developer has
+     approved a fix — never just to look.
 4. **Confirm the reply account.** Replies are authored by whoever owns the credentials, and
    they are posted **on your behalf**. Confirm that's the intended account before any reply.
 
@@ -93,15 +102,27 @@ curl -sS -u "$BITBUCKET_USERNAME:$BITBUCKET_APP_PASSWORD" \
 
 **Keep** everything that reads as feedback or a request — inline findings *and* human review
 notes, from bot or person. A bot finding may have a sibling **suggestion block** (a
-```suggestion fence on the same path+line); group it into the same thread. Pure
-acknowledgements with no ask ("LGTM", "makasih") aren't dropped silently — they're assessed
-as inapplicable / no-action so you still see them.
+```suggestion fence on the same path+line); group it into the same *logical* thread for
+assessment. **But note:** the finding and its suggestion are usually two separate top-level
+comments (each `parent: null`) with **their own comment ids** — so each is resolved
+independently. Assess them as one issue, but when you resolve in Step 4, resolve **every id in
+the group** (finding *and* suggestion), not just one. Pure acknowledgements with no ask ("LGTM",
+"makasih") aren't dropped silently — they're assessed as inapplicable / no-action so you still
+see them.
 
 ## Step 2 — Assess each kept comment
 
-For every kept comment, open the referenced file+lines (for inline comments) or the relevant
-code (for top-level notes) in the local checkout, and assess it with the `code-review` lens
-plus the `coding-standards-*` and any other sdlc-generic-skills relevant to this PR and repo.
+For every kept comment, read the referenced code (via `git show origin/<source-branch>:<path>`
+per Step 0.3) and assess it with the `code-review` lens plus the `coding-standards-*` and any
+other sdlc-generic-skills relevant to this PR and repo.
+
+**Locate by content, not by line number — this is mandatory, not a nicety.** `inline.to` is the
+line as of the commit the comment was made on; if the PR has been pushed to since, that anchor
+is **stale** and will point at unrelated code. Always find the actual code the comment is about
+by its *content* (the symbol, the pattern, the described behavior) and confirm you're looking at
+the right thing before judging. A finding that no longer matches any current code is usually
+**INAPPLICABLE** (already handled / the code was rewritten) — not a fix.
+
 Assign exactly one assessment:
 
 | Assessment | Meaning | If you mark it VALID (Step 4) |
@@ -124,8 +145,22 @@ Rules:
 
 ## Step 3 — Present the assessments and reasons
 
-Show the developer a table: comment id · author · file:line (or "top-level") · a one-line
-gist of the comment · **assessment** · **the reason behind it**. Keep it scannable.
+Present a **Markdown table** — one row per logical issue — so the developer can adjudicate at a
+glance. Render it exactly like this:
+
+| # | Comment id(s) | Author | Location | Gist | Assessment | Reason |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 857189945 (+947 sug.) | EP Metrics | `DrawerRequestAttendance.vue` addFiles | extensionless files fail check | **INAPPLICABLE** | `!ALLOWED_EXTENSIONS.includes(ext)` already rejects them; premise wrong. |
+| 2 | 858150364 | Hendra Arfiansyah | `AttendanceRequest.vue:1042` | QA expects `data-testid` | **APPLICABLE — scope?** | Valid + matches repo convention; but new files use `data-qa` (72×) — confirm scope before fixing. |
+
+Rules for the table:
+- **One row per logical issue**, listing all grouped comment ids (finding + suggestion) together.
+- Use `Location` as a stable content anchor (file + symbol/function), **not** the possibly-stale
+  `inline.to` line number.
+- Keep `Reason` to one grounded sentence — quote the code where it clinches the verdict.
+- For an **APPLICABLE** item whose scope is unclear (e.g. "this element only" vs. "whole PR"),
+  say so in the row — the developer bounds it before Step 4.
+- Below the table, add a one-line tally (e.g. "3 inapplicable, 1 applicable pending scope").
 
 **→ Then ask which assessments are valid, and wait.** The developer adjudicates each row:
 
@@ -146,8 +181,15 @@ For each comment, run the branch its (validity, assessment) lands on:
   supplied a `code_suggestion`, use it as a **starting point** and verify it compiles / fits
   the surrounding code — don't paste blindly.
 - Prefer **one commit per pass** grouping related fixes, unless the developer wants per-comment
-  commits. Hand off to **`commit-workflow`** to commit + push (it derives the conventional
-  prefix from the Jira ticket and adds the co-author trailer). Never hand-roll git writes here.
+  commits. **Commit + push inline** on the PR's source branch with a plain conventional-commit
+  message:
+  - Pick the prefix from the change — `fix:` for a bug, `feat:` for behavior, `chore:`/`refactor:`
+    /`style:`/`test:`/`docs:` otherwise. If the branch name carries a ticket id (e.g.
+    `TE-15806`), lead the subject with it (`fix(TE-15806): …`).
+  - `git add` only the files you changed, `git commit`, then `git push` to the source branch.
+    Confirm with the developer before committing and before pushing.
+  - Any co-author/attribution trailer is optional and per the developer's own convention — not
+    required, and not this skill's concern.
 - Capture the resulting **commit hash** and its web URL
   (`https://bitbucket.org/$WORKSPACE/$REPO/commits/<sha>`). Only ever cite a commit that
   actually landed on `origin`; never a fabricated hash.
@@ -183,6 +225,9 @@ Resolve / reopen endpoints (see `references/bitbucket-comments-api.md`):
 curl -sS -u "$BITBUCKET_USERNAME:$BITBUCKET_APP_PASSWORD" -X POST \
   "https://api.bitbucket.org/2.0/repositories/$WORKSPACE/$REPO/pullrequests/$PR_ID/comments/$COMMENT_ID/resolve"
 ```
+
+Resolve **each comment id in the issue's group** — if a bot finding and its suggestion are two
+separate ids (Step 1), both must be resolved, or a duplicate thread lingers open.
 
 The developer can always **reopen a resolved thread manually** in Bitbucket — without the
 skill's involvement — if a resolution was premature. The skill locks nothing.
@@ -229,7 +274,7 @@ developer before assessing, then run Steps 2 → 4 for that one thread.
   skill handles the comment lifecycle that skill doesn't.
 - ← `code-review` — the assessment lens for Step 2.
 - ← `coding-standards-frontend` / `coding-standards-backend` — how Step 4a fixes are written.
-- → `commit-workflow` — lands every fix (never hand-roll git writes here).
+- Committing + pushing a fix is done **inline** (Step 4a), not via any personal commit skill.
 
 ## What this skill is NOT
 

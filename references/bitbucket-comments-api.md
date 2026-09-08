@@ -111,6 +111,9 @@ curl -sS -u "$BITBUCKET_USERNAME:$BITBUCKET_APP_PASSWORD" -X DELETE \
 ```
 
 - Resolve targets the **finding's own comment id** (the inline thread root), not a reply.
+- A bot finding and its **suggestion sibling** are two separate top-level ids at the same
+  path+line — each has its own `resolution`. Resolve **both**, or the suggestion thread stays
+  open after you've handled the finding.
 - After a successful resolve, a re-fetch shows `resolution` populated (who/when).
 - A `404`/`400` here usually means the id isn't an inline thread (e.g. you aimed at a
   top-level summary comment) — don't retry blindly; re-check the id.

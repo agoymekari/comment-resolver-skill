@@ -59,18 +59,39 @@ re-running the whole PR.
 
 ## Composition
 
-This skill deliberately does not reinvent PR or commit machinery. It composes existing
-Talenta SDLC skills:
+This skill deliberately does not reinvent PR machinery. It composes existing Talenta SDLC
+skills for the parts they already own:
 
 | Concern | Delegated to |
 | --- | --- |
 | Bitbucket remote parsing + auth conventions | `pull-request` |
 | Assessment lens (applicable vs. not) | `code-review` |
 | How a fix is written | `coding-standards-frontend` / `coding-standards-backend` |
-| Landing a fix (conventional commit, co-author trailer, push) | `commit-workflow` |
+| Landing a fix (commit + push) | **inline** — plain conventional-commit recipe, no dependency on any personal commit skill |
 
-Only the PR *comment* endpoints (fetch / reply / resolve) are documented locally, in
+Committing is done inline on purpose: it keeps the skill portable into a shared skill set
+without pulling in anyone's personal commit workflow. Only the PR *comment* endpoints (fetch /
+reply / resolve) are documented locally, in
 [`references/bitbucket-comments-api.md`](references/bitbucket-comments-api.md).
+
+## Notes from field use
+
+A dry run against a real PR surfaced a few behaviors worth calling out — they're baked into
+`SKILL.md`:
+
+- **Assessing is read-only.** The skill reads the exact PR code with
+  `git show origin/<source-branch>:<path>` — it does **not** switch your local branch or touch
+  your working tree just to look. A checkout on the source branch is needed only when a fix is
+  actually applied.
+- **Comments are located by content, not line number.** A comment's inline line anchor goes
+  stale once the PR is pushed to again, so the skill matches on the code's *content*. A finding
+  that no longer matches any current code is treated as already-handled (INAPPLICABLE), not a
+  fix.
+- **Suggestion siblings resolve independently.** A bot finding and its code-suggestion are
+  often two separate threads with their own ids — the skill assesses them as one issue but
+  resolves **both**, so no duplicate thread lingers open.
+- **Assessments are presented as a Markdown table** (one row per issue, with the reason) so you
+  can adjudicate valid/invalid at a glance before anything is written.
 
 ## Layout
 
