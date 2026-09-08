@@ -1,12 +1,17 @@
 # comment-resolver-skill
 
-A [Claude Code](https://claude.com/claude-code) skill that semi-automatically works through the
-open comments on a Bitbucket Cloud pull request — **from any author, bot or human, in English
-or Bahasa Indonesia**. It fetches the comments, assesses each one against the code, asks you
-which assessments are valid, then fixes / answers / replies / resolves — with a developer
-confirmation gate in front of every outward-facing write.
+A skill that semi-automatically works through the open comments on a Bitbucket Cloud pull
+request — **from any author, bot or human, in English or Bahasa Indonesia**. It fetches the
+comments, assesses each one against the code, asks you which assessments are valid, then
+fixes / answers / replies / resolves — with a developer confirmation gate in front of every
+outward-facing write.
 
 > Skill name: `pr-comment-resolver`
+
+It's a plain-language procedure, **not tied to a specific coding agent** — it runs the same
+under [Claude Code](https://claude.com/claude-code), Codex, Copilot, Gemini, Cursor, or any
+assistant that can read files, run a shell (`curl` + `git`), and edit code. The SDLC skills it
+composes (below) are agent-agnostic too.
 
 ## What it does
 
@@ -78,15 +83,17 @@ comment-resolver-skill/
 
 ## Install
 
-Copy the skill into your Claude Code skills directory:
+Install it however your agent loads skills or instructions — it's just Markdown:
 
-```sh
-cp -R comment-resolver-skill ~/.claude/skills/pr-comment-resolver
-```
+- **Claude Code** — `cp -R comment-resolver-skill ~/.claude/skills/pr-comment-resolver`, then
+  trigger with phrases like *"resolve the comments on PR #186"* or *"go through the review
+  comments on this PR"*, or by pinpointing a single comment by author and text.
+- **Codex** — reference `SKILL.md` from `AGENTS.md`.
+- **Cursor** — add it as a project rule under `.cursor/rules/`.
+- **Copilot** — reference it from `.github/copilot-instructions.md`.
+- **Other agents** — point the assistant at `SKILL.md` (and `references/`).
 
-Then trigger it in Claude Code with phrases like *"resolve the comments on PR #186"*,
-*"go through the review comments on this PR"*, or by pinpointing a single comment by author
-and text.
+However it's loaded, ask the assistant to work through the PR's comments following `SKILL.md`.
 
 ## Requirements
 

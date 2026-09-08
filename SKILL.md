@@ -32,6 +32,11 @@ It does **not** care who wrote the comment. A finding from an automated reviewer
 "EP Metrics" AI bot) and a review note from a teammate go through the same loop. Comments may
 be in **English or Bahasa Indonesia**; the skill understands both.
 
+It is **not tied to a specific coding agent.** This is a plain-language procedure — any
+assistant that can read files, run a shell (`curl` + `git`), and edit code can execute it. The
+skills it composes below are themselves agent-agnostic, so "composes X" means "run procedure X"
+however your environment provides it.
+
 It does **not** reinvent PR/commit machinery — it composes existing skills:
 
 - **`pull-request`** → `references/bitbucket-api.md` for remote parsing + auth conventions
