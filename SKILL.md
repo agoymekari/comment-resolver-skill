@@ -148,18 +148,26 @@ Rules:
 Present a **Markdown table** — one row per logical issue — so the developer can adjudicate at a
 glance. Render it exactly like this:
 
-| # | Comment id(s) | Author | Location | Gist | Assessment | Reason |
+| # | Comment id(s) | Author | Location | Comment | Assessment | Reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 857189945 (+947 sug.) | EP Metrics | `DrawerRequestAttendance.vue` addFiles | extensionless files fail check | **INAPPLICABLE** | `!ALLOWED_EXTENSIONS.includes(ext)` already rejects them; premise wrong. |
-| 2 | 858150364 | Hendra Arfiansyah | `AttendanceRequest.vue:1042` | QA expects `data-testid` | **APPLICABLE — scope?** | Valid + matches repo convention; but new files use `data-qa` (72×) — confirm scope before fixing. |
+| 1 | 857189945 (+971 sug.) | EP Metrics | `DrawerRequestAttendance.vue` · `addFiles` | **[possible_bugs, importance: 6/9]** File extension extraction assumes at least one dot in the filename. Files with no extension (e.g., 'README') will fail the ALLOWED_EXTENSIONS check because extension will be an empty string. Add explicit guard to reject extensionless files clearly. | **INAPPLICABLE** (false positive) | Premise is wrong: `'README'.split('.').pop()` → `'README'`, not `''`. Extensionless / unknown files are already rejected via `!ALLOWED_EXTENSIONS.includes(...)` → `hasBadFormat`; the suggested empty-extension guard is redundant. |
+| 2 | 858150364 | Hendra Arfiansyah | `AttendanceRequest.vue:1042` | CMIIW dari qa expectnya data-testid | **APPLICABLE** (scope needs bounding) | Legitimate and consistent with the repo (`data-testid` is the dominant convention), but the new drawer uses `data-qa` exclusively (116×) with a programmatic `[data-qa=…]` selector — confirm scope before fixing. |
 
 Rules for the table:
 - **One row per logical issue**, listing all grouped comment ids (finding + suggestion) together.
+- **`Comment` is the reviewer's own words, verbatim** — do **not** paraphrase, summarize, or
+  translate it (a Bahasa Indonesia comment stays in Bahasa Indonesia here). Strip only pure
+  metadata noise (e.g. a trailing `*Traced with OpenTelemetry…*` footer). Trim **only** when the
+  comment is genuinely long (roughly >200 words): keep the substantive ask and mark it with an
+  `…[trimmed]` suffix. Escape any literal `|` as `\|` so it doesn't break the table.
+- **Assessment cell = verdict + a short parenthetical category** — e.g. `**INAPPLICABLE** (false
+  positive)`, `**INAPPLICABLE** (already handled)`, `**INAPPLICABLE** (intentional / out of
+  scope)`, `**APPLICABLE** (scope needs bounding)`, `**UNDECIDED** (needs confirmation)`. The
+  parenthetical is the at-a-glance label; keep it terse.
 - Use `Location` as a stable content anchor (file + symbol/function), **not** the possibly-stale
   `inline.to` line number.
-- Keep `Reason` to one grounded sentence — quote the code where it clinches the verdict.
-- For an **APPLICABLE** item whose scope is unclear (e.g. "this element only" vs. "whole PR"),
-  say so in the row — the developer bounds it before Step 4.
+- Give `Reason` a full grounded sentence — quote the code where it clinches the verdict; don't
+  clip it to a fragment.
 - Below the table, add a one-line tally (e.g. "3 inapplicable, 1 applicable pending scope").
 
 **→ Then ask which assessments are valid, and wait.** The developer adjudicates each row:
