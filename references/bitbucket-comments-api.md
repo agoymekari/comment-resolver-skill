@@ -20,57 +20,68 @@ curl -sS -u "$BITBUCKET_USERNAME:$BITBUCKET_APP_PASSWORD" \
 
 Response is `{ "values": [ … ], "next": "<url?>" }` — follow `next` until absent.
 
-## Identifying EP Metrics comments
+## Classifying a fetched comment
 
-The bot is an OAuth app user:
+Comments come from **any** author — a bot or a human — and the skill treats them the same.
+The fields that matter for classification:
+
+### Author (bot vs. human)
 
 ```jsonc
-"user": {
-  "type": "app_user",
-  "display_name": "EP Metrics",
-  "kind": "oauth_app",
-  "uuid": "{…}"          // can differ per workspace — do NOT hardcode; match display_name + kind
-}
+// bot / automation — an OAuth app user
+"user": { "type": "app_user", "display_name": "EP Metrics", "kind": "oauth_app", "uuid": "{…}" }
+
+// human reviewer — a normal account
+"user": { "type": "user", "display_name": "Yoga Prasetyo", "account_id": "…" }
 ```
 
-### Actionable finding (inline)
+Author is used for **display and for natural-language pinpointing** (match `display_name`
+fuzzily + a `content.raw` substring), *not* to decide whether a comment is actionable — a
+human note and a bot finding are both fair game. Never hardcode a bot's `uuid` (it can differ
+per workspace); match on `display_name` + `kind` when you do need to name the bot.
+
+### Inline thread (locates code) vs. top-level note
 
 ```jsonc
 {
   "id": 858269858,
-  "content": { "raw": "**[possible_bugs, importance: 6/9]** The discriminator … " },
+  "content": { "raw": "…the discriminator may be undefined here…" },
   "inline": { "path": "src/pages/attendance-setting/FormShift.vue", "to": 195, "from": null },
-  "resolution": null,     // null = open; object = already resolved (skip)
+  "resolution": null,     // null = open; object = already resolved (skip unless pinpointed)
   "deleted": false
 }
 ```
 
-- Body starts with `**[<type>, importance: n/9]**`. Types seen: `possible_bugs`,
-  `error_handling`, and others the bot emits.
-- `inline.path` + `inline.to` (line) locate the code. `inline.to` is the line on the "to"
-  (new) side of the diff.
+- An **inline** comment has `.inline.path` + `.inline.to` (the line on the "to"/new side of
+  the diff) — that locates the code to assess.
+- A **top-level** comment has no `inline` key. It may still be actionable (a general review
+  note) — assess it against the relevant code — or it may be automation noise (below).
+- Comment bodies may be in **English or Bahasa Indonesia**.
 
-### Suggestion sibling (inline, same path+line)
+### Bot finding format (one recognized pattern, not required)
+
+Some bots tag findings, e.g. EP Metrics uses `**[<type>, importance: n/9]**` (`possible_bugs`,
+`error_handling`, …) and may post a sibling **suggestion block** at the same `path`+`to`:
 
 ```jsonc
-{
-  "id": 858269901,
-  "content": { "raw": "**Code suggestion [error_handling, importance: 5/9]:** …\n```suggestion\n<code>\n```" },
-  "inline": { "path": "…", "to": 675 }
-}
+{ "id": 858269901,
+  "content": { "raw": "**Code suggestion […]:** …\n```suggestion\n<code>\n```" },
+  "inline": { "path": "…", "to": 675 } }
 ```
 
-Group a suggestion with the finding at the same `path`+`to` into one logical thread.
+Group a suggestion with the finding at the same `path`+`to` into one logical thread. Treat the
+tag/importance as a hint, not a gate — an untagged human comment is assessed the same way.
 
-### Non-actionable summaries (top-level, NOT resolvable)
+### Automation noise to DROP (top-level, NOT resolvable)
 
-No `inline` key. Recognizable bodies:
+No `inline` key, and no ask to act on — just lifecycle/summary status. Examples (EP Metrics):
 - `🤖 **AI PR review started** (analysis ID: …)`
 - `# Review for PR#… ` + a fenced raw-model-response dump
-- `## ✅ AI Code Review Complete` roll-up
+- `## ✅ AI Code Review Complete` / "Finished AI Code Review" roll-up
 
 Leave these alone. They are not threads → the `/resolve` endpoint does not apply → and they
-are not yours to delete.
+are not yours to delete. Also skip already-resolved (`resolution != null`, unless pinpointed)
+and deleted (`deleted == true`) comments.
 
 ## Reply to a comment (threaded)
 
